@@ -12,8 +12,9 @@
 #include <stdbool.h>
 #include <sys/file.h>
 #include <sys/wait.h>
-#include <linux/limits.h>
-#include "parse.h"
+// #include <linux/limits.h>
+#include <limits.h>
+#include "/c/cs323/Hwk5/parse.h"
 
 // Execute command list CMDLIST and return status of last command executed
 int process (CMD *cmdList);
