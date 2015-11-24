@@ -20,6 +20,7 @@ int simple_cmd (CMD *cmd);
 int stage_cmd (CMD *cmd);
 int built_cmd (CMD *cmd);
 int and_or_cmd (CMD *cmd);
+int seq_cmd (CMD *cmd);
 
 //SET UP file descriptors to redirect IO
 int set_red_out (CMD *cmd);
@@ -201,34 +202,84 @@ int built_cmd (CMD *cmd)
 }
 
 int pipe_cmd (CMD *cmd)
-{
+{	
+	int status = SUCCESS; 
+
 	if (cmd)
 	{
 		if (cmd->type != RED_PIPE)
 			status = stage_cmd(cmd);
-		{
-			
-		}
-
-	}
-
-}
-
-int and_or_cmd (CMD *cmd)
-{
-	if (cmd)
-	{
-		if (cmd->type != SEP_AND && cmd->type != SEP_OR)
-			status = pipe_cmd(cmd);
 		else
 		{
 
 		}
-	}
 
+	}
+	return status;
 }
 
+int and_or_cmd (CMD *cmd)
+{	
+	int status = SUCCESS; 
 
+	if (cmd)
+	{
+		if (cmd->type != SEP_AND && cmd->type != SEP_OR)
+			status = pipe_cmd(cmd);
+		else if (cmd->type == SEP_OR)
+		{
+			status = and_or_cmd(cmd->left);
+			if (status == ERROR) //short circuit otherwise
+				status = pipe_cmd(cmd->right);
+		}
+		else if (cmd->type == SEP_AND)
+		{	
+			status = and_or_cmd(cmd->left);
+			if (status == SUCCESS)
+				status = pipe_cmd(cmd->right);
+		}
+	}
+
+	return status;
+}
+
+int seq_cmd(CMD *cmd)
+{	
+	int status = SUCCESS; 	
+	if (cmd)
+	{
+		if (cmd->type != SEP_END && cmd->type != SEP_BG)
+			status = and_or_cmd(cmd);
+		else if (cmd->type == SEP_END)
+		{
+			status = seq_cmd(cmd->left);
+			if (cmd->right)
+				status = seq_cmd(cmd->right);
+		}
+		else if (cmd->type == SEP_BG)
+		{
+			pid_t pid; 
+
+			if( (pid = fork()) < 0)	//child process not created
+			{
+				perror("STAGE: ");
+				return errno;
+			}
+			else if (pid == 0) //run first cmd in background
+			{	
+				fprintf(stderr, "Backgrounded: %d\n", getpid());
+				status = seq_cmd(cmd->left);
+			}
+			else //run second in foreground, no wait.
+			{	
+				if(cmd->right)
+					status = and_or_cmd(cmd->right);
+			}
+		}
+	}
+
+	return status;
+}
 
 
 ////////////// REDIRECTION //////////////
@@ -336,7 +387,7 @@ int process (CMD *cmdList)
 	for(int i = 0; i < cmdList->nLocal; i++) //each variable
 		setenv(cmdList->locVar[i], cmdList->locVal[i], 1);
 
-	status = stage_cmd(cmdList);
+	status = seq_cmd(cmdList);
 
 	//set ? as status. 
 	*str_status = (char)(48 + status);
@@ -351,4 +402,8 @@ int process (CMD *cmdList)
 
 	return 0;
 }
+
+//NOTES: some structure provided by Kush Patel's 
+//implementation of a shell in C, at https://github.com/kushpatel
+
 
