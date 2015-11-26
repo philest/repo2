@@ -252,6 +252,7 @@ int seq_cmd(CMD *cmd)
 			status = and_or_cmd(cmd);
 		else if (cmd->type == SEP_END)
 		{
+
 			status = seq_cmd(cmd->left);
 			if (cmd->right)
 				status = seq_cmd(cmd->right);
@@ -262,13 +263,14 @@ int seq_cmd(CMD *cmd)
 
 			if( (pid = fork()) < 0)	//child process not created
 			{
-				perror("STAGE: ");
+				perror("FORK: ");
 				return errno;
 			}
 			else if (pid == 0) //run first cmd in background
 			{	
 				fprintf(stderr, "Backgrounded: %d\n", getpid());
 				status = seq_cmd(cmd->left);
+				_exit(status);
 			}
 			else //run second in foreground, no wait.
 			{	
@@ -361,14 +363,12 @@ int exec_cd(CMD *cmd)
 
 int exec_wait(void)
 {
-	int status; 
+	int status;
+	int pid; 
 
-	while( (status = waitpid(-1, &status, 0)) != -1)
-		if (status != 0)
-		{
-			perror("wait: ");
-			return ERROR;
-		}
+	while( (pid = waitpid(-1, &status, 0)) != -1)
+		if (pid != 0)
+			fprintf(stderr, "Completed: %d (%d)\n",	pid, status);
 
 	return SUCCESS;
 }
@@ -381,18 +381,27 @@ int exec_wait(void)
 int process (CMD *cmdList)
 {
 	int status;
-	char str_status[1];
+	char str_status[2];
+	pid_t pid; 
+
+	//reap zombies
+	while ((pid = waitpid((pid_t)(-1), &status, WNOHANG)) > 0)
+		fprintf(stderr, "Completed: %d (%d)\n", pid, status); 
 
 	//set local variables
 	for(int i = 0; i < cmdList->nLocal; i++) //each variable
 		setenv(cmdList->locVar[i], cmdList->locVal[i], 1);
 
 	status = seq_cmd(cmdList);
+	// status = !status; //flip so that 0->failure 1->success 
 
 	//set ? as status. 
 	*str_status = (char)(48 + status);
+	str_status[1] = 0; //null term
+
 	setenv("?", str_status, 1);
 	
+
 	//unset local variables
 	for(int i = 0; i < cmdList->nLocal; i++) //each variable
 		status = unsetenv(cmdList->locVar[i]);
@@ -403,7 +412,12 @@ int process (CMD *cmdList)
 	return 0;
 }
 
-//NOTES: some structure provided by Kush Patel's 
+//NOTES: 
+//
+//Some structure provided by Kush Patel's 
 //implementation of a shell in C, at https://github.com/kushpatel
+//
+//Guidance on reaping zombies from 
+//http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
 
 

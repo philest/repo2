@@ -1,0 +1,37 @@
+___TO DO___
+
+-reap zombies 
+-pipelining
+-edit code to make it more mine
+
+
+
+PROBLEM:
+certain ps are *repeating*. 
+
+ex: 
+	(1)$ alpha
+	beta
+	(2)$ gamma
+	(3)$ delta
+	(2)$ gamma			   ~
+	(3)$ (4)$ End of test
+	(5)$ (4)$ End of test  ~
+	(5)$ 
+
+
+	(1)$ alpha
+	(2)$ beta
+	(3)$ gamma
+	(2)$ beta
+	(3)$ (4)$ End of test
+	(5)$ (4)$ End of test
+	(5)$ 
+
+
+$RUN ./Bsh <<END
+echo alpha ; /c/cs323/Hwk5/Tests/sleeper beta 0.4 delta & sleep 0.2
+echo gamma
+wait
+echo End of test
+END
