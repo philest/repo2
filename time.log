@@ -15,7 +15,8 @@ Date	Time	Spent	Work completed
 11/23	21:00	2:00	sequences and background commands.
 11/27	18:00	4:00	Debugging background commands: exiting child process to prevent duplicaiton. Better reaping of processes.
 11/28	19:00	2:30	Began pipelining. Processing pipe chain of commands.
-11/29	7:30	2:30	Implemented piping, piping status. First try.	
+11/29	7:30	2:30	Implemented piping, piping status. First try.
+11/29	11:30	2:30	Debugging piping. Working on piping status.	
 
 
 		TOTAL:	

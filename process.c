@@ -53,10 +53,13 @@ int exec_wait(void);
 
 // Execute a simple command, cmd. 
 // Return SUCCESS or ERROR.
-int simple_cmd(CMD *cmd)
+int simple_cmd(CMD *cmd, )
 {
 	pid_t pid;
 	int status = SUCCESS;
+	
+	printf("CMD: %s FROMtypeeee: %d", cmd->argv[0], cmd->fromType);
+
 
 	if (!cmd) return status; //ensures given been given cmd
 
@@ -73,6 +76,8 @@ int simple_cmd(CMD *cmd)
 		{
 			if(pid == 0) //child process
 			{
+
+				printf("CMD: %s FROMtype: %d", cmd->argv[0], cmd->fromType);
 
 				if(cmd->fromType != NONE)
 				{
@@ -256,7 +261,7 @@ int pipe_cmd (CMD *cmd)
 
 	if (cmd)
 	{
-	if (cmd->type != RED_PIPE)
+	if (cmd->type != PIPE)
 		overall_status = stage_cmd(cmd);
 	else
 	{
@@ -282,6 +287,7 @@ int pipe_cmd (CMD *cmd)
 	assert(my_pipe_chain->n >= 2);
 
 	table = calloc(my_pipe_chain->n, sizeof(*table));
+
 
 	fdin = 0;			 //original STDIN
 	for(i = 0; i < my_pipe_chain->n - 1; i++) //the chain of ps 
