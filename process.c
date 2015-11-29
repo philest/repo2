@@ -2,6 +2,7 @@
 //
 // Processes command-line args for Bsh's backend.
 #include "process.h"
+#include <assert.h>
 
 #define SUCCESS (0)
 #define ERROR (1)
@@ -15,12 +16,26 @@
 						  (strcmp(cmd, "cd") == 0) || \
 						  (strcmp(cmd, "wait") == 0))
 
+
+struct pipe_chain {
+	int n;    // cmds within
+	int size; //total capicity
+	CMD **cmd_list; //list of commands
+};
+
+typedef struct pipe_chain pipe_chain;
+
 // EXECUTE class of command
 int simple_cmd (CMD *cmd);
 int stage_cmd (CMD *cmd);
 int built_cmd (CMD *cmd);
 int and_or_cmd (CMD *cmd);
 int seq_cmd (CMD *cmd);
+
+// PIPING helper and execution
+int pipe_cmd (CMD *cmd);
+void build_pipe_chain(CMD *cmd, struct pipe_chain *
+							         my_pipe_chain);
 
 //SET UP file descriptors to redirect IO
 int set_red_out (CMD *cmd);
@@ -82,7 +97,7 @@ int simple_cmd(CMD *cmd)
 					execvp(cmd->argv[0], cmd->argv); //execute it 
 					
 					perror("SIMPLE: "); //print possible error
-					exit(errno); //exit to parent process
+					_exit(errno); //exit to parent process
 				}
 				else // parent process
 				{
@@ -201,22 +216,178 @@ int built_cmd (CMD *cmd)
 	return status;
 }
 
+/////// PIPING ////////////
+
+//build an ordered list of the piped commands. 
+void build_pipe_chain(CMD *cmd, struct pipe_chain *
+								my_pipe_chain)
+{
+	if(cmd->type == PIPE) //continue to left-most pipe	
+	{	
+		build_pipe_chain(cmd->left, my_pipe_chain);
+		build_pipe_chain(cmd->right, my_pipe_chain);
+	}
+	else if (cmd->type != PIPE) //reached end
+	{
+		// grow command list!
+		if(my_pipe_chain->n == my_pipe_chain->size)
+			{
+				my_pipe_chain->cmd_list = realloc(
+					      my_pipe_chain->cmd_list, 
+					     2 * my_pipe_chain->size);
+				my_pipe_chain->size *= 2; 
+			}
+
+		my_pipe_chain->cmd_list[my_pipe_chain->n] = cmd;
+		my_pipe_chain->n++;
+	}
+}
+
+
+
+
+
+//Modeled from  from Stan Eisenstat's 
+//pipe.c implementation
 int pipe_cmd (CMD *cmd)
 {	
-	int status = SUCCESS; 
+
+	int overall_status = SUCCESS;
 
 	if (cmd)
 	{
-		if (cmd->type != RED_PIPE)
-			status = stage_cmd(cmd);
-		else
-		{
+	if (cmd->type != RED_PIPE)
+		overall_status = stage_cmd(cmd);
+	else
+	{
 
+	struct entry {
+		int pid, status; 
+	} *table; //table for (pid,status) of all ps
+
+	int fd[2], //read, write fd's. 
+	pid, status = SUCCESS, //ps ID and status for children
+	fdin,
+	i, j; //read in of last pipe (else-> STDIN)
+
+	CMD *curr_cmd; //current command processing
+
+	//initialize pipe_chain
+	pipe_chain *my_pipe_chain = calloc(1, sizeof(*my_pipe_chain));
+	my_pipe_chain->cmd_list = calloc(50, sizeof(CMD*));
+	my_pipe_chain->n = 0;
+	my_pipe_chain->size = 50;
+
+	build_pipe_chain(cmd, my_pipe_chain);
+	assert(my_pipe_chain->n >= 2);
+
+	table = calloc(my_pipe_chain->n, sizeof(*table));
+
+	fdin = 0;			 //original STDIN
+	for(i = 0; i < my_pipe_chain->n - 1; i++) //the chain of ps 
+	{											  //all but last
+		
+		if(pipe(fd) || (pid = fork()) < 0)
+		{
+			perror("PIPE: ");
+			exit(ERROR);
 		}
 
+		else if(pid == 0)	//child		
+		{
+			close(fd[0]);	//so parents gets data from child
+			if (fdin != 0)  //set stdin to the new pipe's read
+			{
+				dup2(fdin, 0);
+				close(fdin);
+			}
+			if (fd[1] != 1) //set stdout to new pipe's write
+			{
+				dup2(fd[1], 1);
+				close(fd[1]);
+			}
+			curr_cmd = my_pipe_chain->cmd_list[i];
+			status = execvp(curr_cmd->argv[0], curr_cmd->argv);
+			if (status < 0) status = ERROR;
+			else status = SUCCESS;
+
+			perror("PIPE CMD");
+			_exit(status);
+		}
+		else // parent ps 
+		{	
+			table[i].pid = pid; 
+			if (i > 1)
+				close(fdin);	//???
+			fdin = fd[0]; //remember the read from the pipe
+			close(fd[1]); //don't write to pipe
+		}
 	}
-	return status;
+
+	//the last ps! 
+	curr_cmd = my_pipe_chain->cmd_list[my_pipe_chain->n-1];
+	if ((pid = fork()) < 0)
+	{
+		perror("PIPE: ");
+		exit(ERROR);
+	}
+	else if (pid == 0)
+	{
+		if(fdin != 0)
+		{
+			dup2(fdin, 0); //make stdin  read[last pipe]
+			close(fdin);
+		}
+		status = execvp(curr_cmd->argv[0], curr_cmd->argv);
+		if (status < 0) status = ERROR;
+		else status = SUCCESS;
+
+		perror("PIPE CMD");
+		_exit(status);
+	}
+	else
+	{
+		table[my_pipe_chain->n-1].pid = pid;
+		if (i > 1)
+			close(fdin);
+	}
+
+	for(i = 1; i < my_pipe_chain->n; )
+	{
+		pid = wait(&status);
+		for (j = 1; j < my_pipe_chain->n &&
+				table[j].pid != pid; j++)
+			;
+		if (j < my_pipe_chain->n)
+		{
+			table[j].status = status;
+			i++;
+		}
+	}
+
+	for (i = 0; i < my_pipe_chain->n; i++)
+	{
+		if (WIFEXITED(table[i].status))
+		{
+			overall_status = WEXITSTATUS(table[i].status);
+		}
+		else if (128+WTERMSIG(table[i].status))
+			overall_status = 128+WTERMSIG(table[i].status);
+	}
+
+	free(table);
+	free(my_pipe_chain->cmd_list);
+	free(my_pipe_chain);
+
+	}
+
+	}
+
+
+	return overall_status;
 }
+
+
 
 int and_or_cmd (CMD *cmd)
 {	
@@ -412,12 +583,16 @@ int process (CMD *cmdList)
 	return 0;
 }
 
-//NOTES: 
+//NOTES & REFERENCES: 
 //
-//Some structure provided by Kush Patel's 
+//Some overall structure provided by Kush Patel's 
 //implementation of a shell in C, at https://github.com/kushpatel
 //
 //Guidance on reaping zombies from 
 //http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
+//
+//pipe_cmd is guided by piping in c example by Doug Von at 
+//https://github.com/dougvk
+//
 
 

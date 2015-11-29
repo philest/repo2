@@ -1,0 +1,76 @@
+
+
+//build an ordered list of the piped commands. 
+build_pipe_chain(CMD * cmd, CMD **pipe_chain)
+{
+	if(cmd->type == PIPE) //continue to left-most pipe	
+	{	
+		build_pipe_chain(cmd->left, pipe_chain)
+		build_pipe_chain(cmd->right, pipe_chain);
+	}
+	else if (cmd->type != PIPE) //reached end
+	{
+		// grow command list!
+		if(pipe_chain->n == pipe_chain->size)
+			{
+				pipe_chain->cmd_list = realloc(pipe_chain->cmd_list,
+											 2 * pipe_chain->size);
+				pipe_chain->size *= 2; 
+			}
+
+		pipe_chain->cmd_list[n] = cmd;
+		pipe_chain->n++;
+	}
+}
+
+
+
+int pipe_cmd (CMD *cmd)
+{	
+
+
+	struct pipe_chain {
+		int n;    // cmds within
+		int size; //total capicity
+		CMD **cmd_list; //list of commands
+	}
+
+	struct entry {
+		int pid, status; 
+	} *table; //table for (pid,status) of all ps
+
+	int fd[2], //read, write fd's. 
+	pid, status, //ps ID and status for children
+	fdin; //read in of last pipe (else-> STDIN)
+
+	int num_pipes = 0; //how many pipes in chain 
+
+	//initialize pipe_chain
+	pipe_chain *my_pipe_chain = calloc(1, sizeof(*my_pipe_chain));
+	my_pipe_chain->cmd_list = calloc(50, sizeof(CMD*));
+	my_pipe_chain->n = 0;
+	my_pipe_chain->size = 50;
+
+	build_pipe_chain(cmd, my_pipe_chain);
+
+
+	for(int i = 0; i < my_pipe_chain->n; i++)
+		printf("%s xx ", my_pipe_chain->cmd_list[i]->argv[0]);
+
+
+	// //find out how many pipes in the chain
+	// while(CMD *curr_cmd = cmd; cmd->type == PIPE; 
+	// 		curr_cmd = curr_cmd->left)
+	// 	num_pipes++; 
+
+	// table = calloc(num_pipes, sizeof(*table));
+
+	// fdin = 0;
+
+
+
+
+}
+
+
+
