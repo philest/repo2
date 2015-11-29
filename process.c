@@ -16,9 +16,10 @@
 						  (strcmp(cmd, "cd") == 0) || \
 						  (strcmp(cmd, "wait") == 0))
 
-
+//holds the commands, ordered,
+//to execute for piping
 struct pipe_chain {
-	int n;    // cmds within
+	int n;    // # commands within
 	int size; //total capicity
 	CMD **cmd_list; //list of commands
 };
@@ -50,65 +51,65 @@ int exec_wait(void);
 
 ////////////// EXECUTE COMMANDS //////////////
 
-
+// Execute a simple command, cmd. 
+// Return SUCCESS or ERROR.
 int simple_cmd(CMD *cmd)
 {
 	pid_t pid;
 	int status = SUCCESS;
 
-	if (cmd)
-	{		
-		if (IS_BUILT(cmd->argv[0]))
-			status = built_cmd(cmd);
-		else 
+	if (!cmd) return status; //ensures given been given cmd
+
+	if (IS_BUILT(cmd->argv[0]))
+		status = built_cmd(cmd);
+	else 
+	{
+		if( (pid = fork()) < 0)	//child process not created
 		{
-			if( (pid = fork()) < 0)	//child process not created
+				perror("SIMPLE: ");
+				return errno;
+		}	
+		else
+		{
+			if(pid == 0) //child process
 			{
-					perror("SIMPLE: ");
-					return errno;
-			}	
-			else
-			{
-				if(pid == 0) //child process
+
+				if(cmd->fromType != NONE)
 				{
-
-					if(cmd->fromType != NONE)
+					//setup input redirection
+					int red_err = set_red_in(cmd);
+					if(red_err != SUCCESS)
 					{
-						//setup input redirection
-						int red_err = set_red_in(cmd);
-						if(red_err != SUCCESS)
-						{
-							perror("RED_IN: ");
-							exit(red_err);
-						}
+						perror("RED_IN: ");
+						exit(red_err);
 					}
-
-					if(cmd->toType != NONE) 
-					{
-						//setup output redirection
-						int red_err = set_red_out(cmd);
-						if (red_err != SUCCESS)
-						{
-							perror("RED_OUT: ");
-							exit(red_err);
-						} 
-					}
-
-					execvp(cmd->argv[0], cmd->argv); //execute it 
-					
-					perror("SIMPLE: "); //print possible error
-					_exit(errno); //exit to parent process
-				}
-				else // parent process
-				{
-					waitpid(pid, &status, 0);
-
-					//updates status in case of sigint
-					status = (WIFEXITED(status) ? WEXITSTATUS(status) 
-									: 128+WTERMSIG(status));
 				}
 
+				if(cmd->toType != NONE) 
+				{
+					//setup output redirection
+					int red_err = set_red_out(cmd);
+					if (red_err != SUCCESS)
+					{
+						perror("RED_OUT: ");
+						exit(red_err);
+					} 
+				}
+
+				execvp(cmd->argv[0], cmd->argv); //execute it 
+				
+				perror("SIMPLE: "); //print possible error
+				_exit(errno); //exit to parent process
 			}
+			else // parent process
+			{
+				waitpid(pid, &status, 0);
+
+				//updates status in case of sigint
+				status = (WIFEXITED(status) ? WEXITSTATUS(status) 
+								: 128+WTERMSIG(status));
+			}
+
 		}
 	}
 
@@ -119,62 +120,62 @@ int stage_cmd (CMD *cmd)
 {
 	pid_t pid; 
 	int status = SUCCESS;
+	
+	if (!cmd) return status;
+		
+	if (cmd->type == SIMPLE)
+		status = simple_cmd(cmd);
 
-	if (cmd)
+	else if (cmd->type == SUBCMD)
 	{
-		if (cmd->type == SIMPLE)
-			status = simple_cmd(cmd);
 
-		else if (cmd->type == SUBCMD)
+		if( (pid = fork()) < 0)	//child process not created
 		{
+				perror("STAGE: ");
+				return errno;
+		}	
+		else
+		{
+			if(pid == 0) //child process
+			{	
 
-			if( (pid = fork()) < 0)	//child process not created
-			{
-					perror("STAGE: ");
-					return errno;
-			}	
-			else
-			{
-				if(pid == 0) //child process
-				{	
-
-					if(cmd->fromType != NONE)
-					{
-						//setup input redirection
-						int red_err = set_red_in(cmd);
-						if(red_err != SUCCESS)
-						{
-							perror("RED_IN: ");
-							exit(red_err);
-						}
-					}
-
-					if(cmd->toType != NONE) 
-					{
-						//setup output redirection
-						int red_err = set_red_out(cmd);
-						if (red_err != SUCCESS)
-						{
-							perror("RED_OUT: ");
-							exit(red_err);
-						} 
-					}
-
-					_exit(simple_cmd(cmd->left)); //exit to parent process
-				}
-				else // parent process
+				if(cmd->fromType != NONE)
 				{
-					waitpid(pid, &status, 0);
-
-					//updates status in case of sigint
-					status = (WIFEXITED(status) ? WEXITSTATUS(status) 
-									: 128+WTERMSIG(status));
+					//setup input redirection
+					int red_err = set_red_in(cmd);
+					if(red_err != SUCCESS)
+					{
+						perror("RED_IN: ");
+						exit(red_err);
+					}
 				}
 
+				if(cmd->toType != NONE) 
+				{
+					//setup output redirection
+					int red_err = set_red_out(cmd);
+					if (red_err != SUCCESS)
+					{
+						perror("RED_OUT: ");
+						exit(red_err);
+					} 
+				}
+
+				_exit(simple_cmd(cmd->left)); //exit to parent process
+			}
+			else // parent process
+			{
+				waitpid(pid, &status, 0);
+
+				//updates status in case of sigint
+				status = (WIFEXITED(status) ? WEXITSTATUS(status) 
+								: 128+WTERMSIG(status));
 			}
 
 		}
+
 	}
+
 
 	return status;
 }
@@ -183,6 +184,8 @@ int stage_cmd (CMD *cmd)
 int built_cmd (CMD *cmd)
 {
 	int status = SUCCESS;
+
+	if (!cmd) return status;
 
 	if(cmd->fromType != NONE)
 	{
@@ -245,13 +248,10 @@ void build_pipe_chain(CMD *cmd, struct pipe_chain *
 
 
 
-
-
 //Modeled from  from Stan Eisenstat's 
 //pipe.c implementation
 int pipe_cmd (CMD *cmd)
 {	
-
 	int overall_status = SUCCESS;
 
 	if (cmd)
@@ -329,7 +329,7 @@ int pipe_cmd (CMD *cmd)
 	if ((pid = fork()) < 0)
 	{
 		perror("PIPE: ");
-		exit(ERROR);
+		_exit(ERROR);
 	}
 	else if (pid == 0)
 	{
@@ -352,10 +352,10 @@ int pipe_cmd (CMD *cmd)
 			close(fdin);
 	}
 
-	for(i = 1; i < my_pipe_chain->n; )
+	for(i = 0; i < my_pipe_chain->n; )
 	{
 		pid = wait(&status);
-		for (j = 1; j < my_pipe_chain->n &&
+		for (j = 0; j < my_pipe_chain->n &&
 				table[j].pid != pid; j++)
 			;
 		if (j < my_pipe_chain->n)
@@ -393,63 +393,62 @@ int and_or_cmd (CMD *cmd)
 {	
 	int status = SUCCESS; 
 
-	if (cmd)
+	if (!cmd) return status;
+	
+	if (cmd->type != SEP_AND && cmd->type != SEP_OR)
+		status = pipe_cmd(cmd);
+	else if (cmd->type == SEP_OR)
 	{
-		if (cmd->type != SEP_AND && cmd->type != SEP_OR)
-			status = pipe_cmd(cmd);
-		else if (cmd->type == SEP_OR)
-		{
-			status = and_or_cmd(cmd->left);
-			if (status == ERROR) //short circuit otherwise
-				status = pipe_cmd(cmd->right);
-		}
-		else if (cmd->type == SEP_AND)
-		{	
-			status = and_or_cmd(cmd->left);
-			if (status == SUCCESS)
-				status = pipe_cmd(cmd->right);
-		}
+		status = and_or_cmd(cmd->left);
+		if (status == ERROR) //short circuit otherwise
+			status = pipe_cmd(cmd->right);
 	}
-
+	else if (cmd->type == SEP_AND)
+	{	
+		status = and_or_cmd(cmd->left);
+		if (status == SUCCESS)
+			status = pipe_cmd(cmd->right);
+	}
+	
 	return status;
 }
 
 int seq_cmd(CMD *cmd)
 {	
 	int status = SUCCESS; 	
-	if (cmd)
+	if (!cmd) return status;
+
+	if (cmd->type != SEP_END && cmd->type != SEP_BG)
+		status = and_or_cmd(cmd);
+	else if (cmd->type == SEP_END)
 	{
-		if (cmd->type != SEP_END && cmd->type != SEP_BG)
-			status = and_or_cmd(cmd);
-		else if (cmd->type == SEP_END)
-		{
 
-			status = seq_cmd(cmd->left);
-			if (cmd->right)
-				status = seq_cmd(cmd->right);
+		status = seq_cmd(cmd->left);
+		if (cmd->right)
+			status = seq_cmd(cmd->right);
+	}
+	else if (cmd->type == SEP_BG)
+	{
+		pid_t pid; 
+
+		if( (pid = fork()) < 0)	//child process not created
+		{
+			perror("FORK: ");
+			return errno;
 		}
-		else if (cmd->type == SEP_BG)
-		{
-			pid_t pid; 
-
-			if( (pid = fork()) < 0)	//child process not created
-			{
-				perror("FORK: ");
-				return errno;
-			}
-			else if (pid == 0) //run first cmd in background
-			{	
-				fprintf(stderr, "Backgrounded: %d\n", getpid());
-				status = seq_cmd(cmd->left);
-				_exit(status);
-			}
-			else //run second in foreground, no wait.
-			{	
-				if(cmd->right)
-					status = and_or_cmd(cmd->right);
-			}
+		else if (pid == 0) //run first cmd in background
+		{	
+			fprintf(stderr, "Backgrounded: %d\n", getpid());
+			status = seq_cmd(cmd->left);
+			_exit(status);
+		}
+		else //run second in foreground, no wait.
+		{	
+			if(cmd->right)
+				status = and_or_cmd(cmd->right);
 		}
 	}
+	
 
 	return status;
 }
@@ -576,8 +575,6 @@ int process (CMD *cmdList)
 	//unset local variables
 	for(int i = 0; i < cmdList->nLocal; i++) //each variable
 		status = unsetenv(cmdList->locVar[i]);
-
-
 
 
 	return 0;
