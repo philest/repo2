@@ -166,7 +166,7 @@ int stage_cmd (CMD *cmd)
 					} 
 				}
 
-				_exit(simple_cmd(cmd->left)); //exit to parent process
+				_exit(seq_cmd(cmd->left)); //exit to parent process
 			}
 			else // parent process
 			{
@@ -374,8 +374,9 @@ int pipe_cmd (CMD *cmd)
 	for (i = 0; i < my_pipe_chain->n; i++)
 	{
 		if (WIFEXITED(table[i].status))
-		{
-			overall_status = WEXITSTATUS(table[i].status);
+		{	
+			if (overall_status != ERROR) //haven't met err yet.
+				overall_status = WEXITSTATUS(table[i].status);
 		}
 		else if (128+WTERMSIG(table[i].status))
 			overall_status = 128+WTERMSIG(table[i].status);
@@ -424,9 +425,27 @@ int seq_cmd(CMD *cmd)
 	int status = SUCCESS; 	
 	if (!cmd) return status;
 
-	//set redirection here! 
+	// //set redirection here! 
+	// if(cmd->fromType != NONE)
+	// {
+	// 	int red_err = set_red_in(cmd);
+	// 	if(red_err != SUCCESS)
+	// 	{
+	// 		perror("RED_IN: ");
+	// 		exit(red_err);
+	// 	}
+	// }
 
-
+	// if(cmd->toType != NONE) 
+	// {
+	// 	//setup output redirection
+	// 	int red_err = set_red_out(cmd);
+	// 	if (red_err != SUCCESS)
+	// 	{
+	// 		perror("RED_OUT: ");
+	// 		exit(red_err);
+	// 	} 
+	// }
 
 	if (cmd->type != SEP_END && cmd->type != SEP_BG)
 		status = and_or_cmd(cmd);

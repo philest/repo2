@@ -17,7 +17,7 @@ Date	Time	Spent	Work completed
 11/28	19:00	2:30	Began pipelining. Processing pipe chain of commands.
 11/29	7:30	2:30	Implemented piping, piping status. First try.
 11/29	11:30	2:30	Debugging piping. Working on piping status.	
-
+11/29	21:00	2:00	Debugging redirection problems; problems with mix of commands.
 
 		TOTAL:	
 
