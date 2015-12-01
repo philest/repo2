@@ -53,12 +53,12 @@ int exec_wait(void);
 
 // Execute a simple command, cmd. 
 // Return SUCCESS or ERROR.
-int simple_cmd(CMD *cmd, )
+int simple_cmd(CMD *cmd)
 {
 	pid_t pid;
 	int status = SUCCESS;
 	
-	printf("CMD: %s FROMtypeeee: %d", cmd->argv[0], cmd->fromType);
+	// printf("CMD: %s FROMtypeeee: %d", cmd->argv[0], cmd->fromType);
 
 
 	if (!cmd) return status; //ensures given been given cmd
@@ -77,7 +77,7 @@ int simple_cmd(CMD *cmd, )
 			if(pid == 0) //child process
 			{
 
-				printf("CMD: %s FROMtype: %d", cmd->argv[0], cmd->fromType);
+				// printf("CMD: %s FROMtype: %d", cmd->argv[0], cmd->fromType);
 
 				if(cmd->fromType != NONE)
 				{
@@ -423,6 +423,10 @@ int seq_cmd(CMD *cmd)
 {	
 	int status = SUCCESS; 	
 	if (!cmd) return status;
+
+	//set redirection here! 
+
+
 
 	if (cmd->type != SEP_END && cmd->type != SEP_BG)
 		status = and_or_cmd(cmd);
